@@ -73,7 +73,10 @@ Trackify/
 
 ## Authors
 
--Abhijith S
--Alan Benny 
--Adithyan S
--Aeibel Sebastian 
+Abhijith S
+
+Alan Benny 
+
+Adithyan S
+
+Aeibel Sebastian 
