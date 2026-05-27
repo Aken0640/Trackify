@@ -1,11 +1,3 @@
-"""
-Trackify v3.1 — Complete Personal Finance Manager
-Fixes: Instant theme switching (full UI rebuild), analytics month arrow nav,
-uniform calendar cells (total inc/exp only), editable goals, dashboard grouped
-by day with month arrow nav (no date pickers / no min-max), Ctrl+F badge on
-search, Ctrl+N tooltip on FAB, library install note on export page.
-"""
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 import matplotlib
