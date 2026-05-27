@@ -1,2 +1,6 @@
-transactions.csv
 __pycache__/
+trackify_config.json
+transactions.csv
+trackify_backup_*.csv
+trackify_export_*.xlsx
+trackify_export_*.pdf
