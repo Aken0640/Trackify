@@ -39,8 +39,24 @@ except ImportError:
 #  Helpers
 # ─────────────────────────────────────────────
 
+CURRENCY_SYMBOL = "₹"
+DISPLAY_DATE_FMT = "dd-mm-yyyy"
+
+_DATEFMT_MAP = {
+    "dd-mm-yyyy": "%d-%m-%Y",
+    "mm-dd-yyyy": "%m-%d-%Y",
+    "yyyy-mm-dd": "%Y-%m-%d",
+}
+
 def fmt(amount: float) -> str:
-    return f"₹{amount:,.2f}"
+    return f"{CURRENCY_SYMBOL}{amount:,.2f}"
+
+def fmt_date(date_str: str) -> str:
+    try:
+        d = datetime.strptime(date_str, "%d-%m-%Y")
+        return d.strftime(_DATEFMT_MAP.get(DISPLAY_DATE_FMT, "%d-%m-%Y"))
+    except Exception:
+        return date_str
 
 def center_window(win, w, h, relative_to=None):
     if relative_to:
@@ -213,6 +229,10 @@ class ExpenseTracker:
         self.balance=0.0; self.total_income=0.0; self.total_expense=0.0
         self.expenses={}; self.all_transactions=[]
         self._undo_buffer=None; self._undo_job=None
+
+        global CURRENCY_SYMBOL, DISPLAY_DATE_FMT
+        CURRENCY_SYMBOL = self.cfg.get("currency","₹")
+        DISPLAY_DATE_FMT = self.cfg.get("date_format","dd-mm-yyyy")
 
         self.budgets   = self.cfg.get("budgets",{})
         self.goals     = self.cfg.get("goals",[])
@@ -477,7 +497,6 @@ class ExpenseTracker:
         search_wrap.pack(side="left", padx=(4,14), ipady=2)
 
         self._search = tk.StringVar()
-        self._search.trace_add("write", lambda *_: self._refresh_dash_table())
         self._search_entry = tk.Entry(search_wrap, textvariable=self._search,
                                       bg=Theme.get("CARD"), fg=Theme.get("TEXT"),
                                       insertbackground=Theme.get("TEXT"),
@@ -646,7 +665,7 @@ class ExpenseTracker:
             hdr = tk.Frame(self._dash_inner, bg=Theme.get("PANEL"), pady=4)
             hdr.pack(fill="x", pady=(6,1))
             try:
-                wd = datetime.strptime(day_str,"%d-%m-%Y").strftime("%A, %d %B %Y")
+                wd = datetime.strptime(day_str,"%d-%m-%Y").strftime("%A, " + _DATEFMT_MAP.get(DISPLAY_DATE_FMT, "%d-%m-%Y"))
             except: wd = day_str
             tk.Label(hdr, text=wd, font=("Arial",9,"bold"),
                      fg=Theme.get("ACCENT"), bg=Theme.get("PANEL"),
@@ -860,7 +879,7 @@ class ExpenseTracker:
         tk.Label(row,text="Category:",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD")).pack(side="left")
         self._bud_cat=ttk.Combobox(row,values=self.EXPENSE_CATS,state="readonly",width=14)
         self._bud_cat.pack(side="left",padx=(6,14)); self._bud_cat.current(0)
-        tk.Label(row,text="Limit (₹):",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD")).pack(side="left")
+        tk.Label(row,text=f"Limit ({CURRENCY_SYMBOL}):",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD")).pack(side="left")
         self._bud_amt=tk.Entry(row,bg=Theme.get("BG"),fg=Theme.get("TEXT"),
                                insertbackground=Theme.get("TEXT"),relief="flat",font=("Arial",10),width=10)
         self._bud_amt.pack(side="left",padx=(6,14),ipady=4)
@@ -1082,8 +1101,8 @@ class ExpenseTracker:
         row=tk.Frame(form,bg=Theme.get("CARD")); row.pack(fill="x")
         for lbl,var_name,width in [
             ("Goal Name:","_goal_name_var",16),
-            ("Target (₹):","_goal_target_var",10),
-            ("Saved (₹):","_goal_saved_var",10),
+            (f"Target ({CURRENCY_SYMBOL}):","_goal_target_var",10),
+            (f"Saved ({CURRENCY_SYMBOL}):","_goal_saved_var",10),
         ]:
             tk.Label(row,text=lbl,font=("Arial",9),fg=Theme.get("SUBTEXT"),
                      bg=Theme.get("CARD")).pack(side="left",padx=(0,4))
@@ -1175,9 +1194,9 @@ class ExpenseTracker:
 
         lbl("Goal Name")
         name_e=ent(goal["name"])
-        lbl("Target (₹)")
+        lbl(f"Target ({CURRENCY_SYMBOL})")
         target_e=ent(str(goal["target"]))
-        lbl("Amount Saved (₹)")
+        lbl(f"Amount Saved ({CURRENCY_SYMBOL})")
         saved_e=ent(str(goal["saved"]))
 
         btn_row=tk.Frame(popup,bg=Theme.get("BG")); btn_row.pack(pady=14,fill="x",padx=26)
@@ -1350,7 +1369,7 @@ class ExpenseTracker:
             for c,key in enumerate(["Date","Type","Category","Amount","Notes"],1):
                 cell=ws.cell(row=r,column=c,value=float(tx["Amount"]) if key=="Amount" else tx.get(key,""))
                 cell.fill=rf
-                if key=="Amount": cell.number_format="₹#,##0.00"
+                if key=="Amount": cell.number_format=f'{CURRENCY_SYMBOL}#,##0.00'
         for col in ws.columns: ws.column_dimensions[col[0].column_letter].width=18
         ws2=wb.create_sheet("Summary")
         ws2.cell(1,1,"Trackify Financial Summary").font=Font(bold=True,size=14)
@@ -1449,6 +1468,13 @@ class ExpenseTracker:
         def row(parent):
             r=tk.Frame(parent,bg=Theme.get("CARD")); r.pack(fill="x",pady=3); return r
 
+        # ── helper: show a fleeting "Saved" indicator next to a widget ──
+        def _flash_saved(widget):
+            tip = tk.Label(widget.master, text="✓ Saved", font=("Arial",8),
+                           fg=Theme.get("GREEN"), bg=Theme.get("CARD"))
+            tip.pack(side="left", padx=6)
+            widget.master.after(1200, tip.destroy)
+
         # ── 1. Currency & Display ──
         s1=section("Currency & Display","💱")
         r1=row(s1)
@@ -1460,12 +1486,30 @@ class ExpenseTracker:
         currency_cb.pack(side="left",padx=8,ipady=4)
         tk.Label(r1,text="(e.g. ₹  $  €  £)",font=("Arial",8),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD")).pack(side="left")
 
+        def _on_currency_change(*_):
+            global CURRENCY_SYMBOL
+            sym = self._cfg_currency.get() or "₹"
+            CURRENCY_SYMBOL = sym
+            self.cfg["currency"] = sym
+            save_config(self.cfg)
+            self._refresh_cards()
+            self._refresh_dash_table()
+        self._cfg_currency.trace_add("write", _on_currency_change)
+
         r2=row(s1)
         tk.Label(r2,text="Date Format:",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD"),width=20,anchor="w").pack(side="left")
         self._cfg_datefmt=tk.StringVar(value=self.cfg.get("date_format","dd-mm-yyyy"))
         dfcb=ttk.Combobox(r2,textvariable=self._cfg_datefmt,
                           values=["dd-mm-yyyy","mm-dd-yyyy","yyyy-mm-dd"],state="readonly",width=14)
         dfcb.pack(side="left",padx=8)
+
+        def _on_datefmt_change(*_):
+            global DISPLAY_DATE_FMT
+            DISPLAY_DATE_FMT = self._cfg_datefmt.get()
+            self.cfg["date_format"] = DISPLAY_DATE_FMT
+            save_config(self.cfg)
+            self._refresh_dash_table()
+        self._cfg_datefmt.trace_add("write", _on_datefmt_change)
 
         # ── 2. Dashboard defaults ──
         s2=section("Dashboard Defaults","🏠")
@@ -1475,6 +1519,13 @@ class ExpenseTracker:
         ttk.Combobox(r3,textvariable=self._cfg_def_filter,
                      values=["All","Income","Expense"],state="readonly",width=10).pack(side="left",padx=8)
 
+        def _on_def_filter_change(*_):
+            self.cfg["default_filter"] = self._cfg_def_filter.get()
+            save_config(self.cfg)
+            if hasattr(self,"_filter"):
+                self._filter.set(self._cfg_def_filter.get())
+        self._cfg_def_filter.trace_add("write", _on_def_filter_change)
+
         r4=row(s2)
         tk.Label(r4,text="Start on current month:",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD"),width=20,anchor="w").pack(side="left")
         self._cfg_cur_month=tk.BooleanVar(value=self.cfg.get("start_current_month",True))
@@ -1482,14 +1533,30 @@ class ExpenseTracker:
                        fg=Theme.get("TEXT"),selectcolor=Theme.get("BG"),
                        activebackground=Theme.get("CARD")).pack(side="left",padx=8)
 
+        def _on_cur_month_change(*_):
+            self.cfg["start_current_month"] = self._cfg_cur_month.get()
+            save_config(self.cfg)
+        self._cfg_cur_month.trace_add("write", _on_cur_month_change)
+
         # ── 3. Notifications / Alerts ──
         s3=section("Budget Alerts","🔔")
         r5=row(s3)
         tk.Label(r5,text="Warn at % of budget:",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD"),width=20,anchor="w").pack(side="left")
         self._cfg_warn_pct=tk.StringVar(value=str(self.cfg.get("budget_warn_pct",80)))
-        tk.Entry(r5,textvariable=self._cfg_warn_pct,width=5,bg=Theme.get("BG"),
-                 fg=Theme.get("TEXT"),insertbackground=Theme.get("TEXT"),relief="flat",font=("Arial",11)).pack(side="left",padx=8,ipady=4)
+        warn_entry=tk.Entry(r5,textvariable=self._cfg_warn_pct,width=5,bg=Theme.get("BG"),
+                 fg=Theme.get("TEXT"),insertbackground=Theme.get("TEXT"),relief="flat",font=("Arial",11))
+        warn_entry.pack(side="left",padx=8,ipady=4)
         tk.Label(r5,text="%",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD")).pack(side="left")
+
+        def _on_warn_pct_change(*_):
+            try:
+                val = int(self._cfg_warn_pct.get())
+                if not (1 <= val <= 100): return
+                self.cfg["budget_warn_pct"] = val
+                save_config(self.cfg)
+            except ValueError:
+                pass
+        self._cfg_warn_pct.trace_add("write", _on_warn_pct_change)
 
         r6=row(s3)
         tk.Label(r6,text="Enable budget alerts:",font=("Arial",9),fg=Theme.get("SUBTEXT"),bg=Theme.get("CARD"),width=20,anchor="w").pack(side="left")
@@ -1497,6 +1564,11 @@ class ExpenseTracker:
         tk.Checkbutton(r6,variable=self._cfg_alerts,bg=Theme.get("CARD"),
                        fg=Theme.get("TEXT"),selectcolor=Theme.get("BG"),
                        activebackground=Theme.get("CARD")).pack(side="left",padx=8)
+
+        def _on_alerts_change(*_):
+            self.cfg["budget_alerts"] = self._cfg_alerts.get()
+            save_config(self.cfg)
+        self._cfg_alerts.trace_add("write", _on_alerts_change)
 
         # ── 4. Data Management ──
         s4=section("Data Management","🗄️")
@@ -1549,29 +1621,8 @@ class ExpenseTracker:
             tk.Label(ar,text=v,font=("Consolas",9),fg=Theme.get("ACCENT"),
                      bg=Theme.get("CARD")).pack(side="left",padx=8)
 
-        # ── Save Settings button ──
-        save_row=tk.Frame(content,bg=Theme.get("BG")); save_row.pack(fill="x",padx=20,pady=12)
-        tk.Button(save_row,text="💾  Save Settings",font=("Arial",11,"bold"),
-                  bg=Theme.get("ACCENT"),fg=Theme.get("BG"),relief="flat",
-                  padx=20,pady=10,cursor="hand2",command=self._save_settings).pack(side="left")
-
         # Bind mousewheel to everything inside settings after full build
         content.after(100, lambda: _bind_settings_scroll(content))
-
-    def _save_settings(self):
-        try:
-            warn_pct=int(self._cfg_warn_pct.get())
-            if not (1<=warn_pct<=100): raise ValueError
-        except ValueError:
-            messagebox.showerror("Invalid","Budget warn % must be 1–100."); return
-        self.cfg["currency"]           = self._cfg_currency.get() or "₹"
-        self.cfg["date_format"]        = self._cfg_datefmt.get()
-        self.cfg["default_filter"]     = self._cfg_def_filter.get()
-        self.cfg["start_current_month"]= self._cfg_cur_month.get()
-        self.cfg["budget_warn_pct"]    = warn_pct
-        self.cfg["budget_alerts"]      = self._cfg_alerts.get()
-        save_config(self.cfg)
-        messagebox.showinfo("Saved","Settings saved.\nSome changes take effect on next launch.")
 
     def _clear_all_data(self):
         if not messagebox.askyesno("⚠ Clear ALL Data",
@@ -1597,7 +1648,7 @@ class ExpenseTracker:
     def _sort_by(self, col):
         asc=not self._sort_state.get(col,True); self._sort_state[col]=asc
         data=[(self.table.set(c,col),c) for c in self.table.get_children("")]
-        try:   data.sort(key=lambda x: float(x[0].replace("₹","").replace(",","")),reverse=not asc)
+        try:   data.sort(key=lambda x: float(x[0].replace(CURRENCY_SYMBOL,"").replace(",","")),reverse=not asc)
         except:data.sort(reverse=not asc)
         for i,(_,child) in enumerate(data): self.table.move(child,"",i)
 
@@ -1612,7 +1663,7 @@ class ExpenseTracker:
         to_delete=[]
         for item in sel:
             v=self.table.item(item,"values")
-            raw_amt=v[3].replace("₹","").replace(",","")
+            raw_amt=v[3].replace(CURRENCY_SYMBOL,"").replace(",","")
             to_delete.append((v[0],v[1],v[2],raw_amt,v[4]))
             self.table.delete(item)
         kept,deleted_rows=[],[]
@@ -1675,7 +1726,7 @@ class ExpenseTracker:
         if len(sel)>1: messagebox.showinfo("One at a Time","Select a single transaction to edit."); return
         vals=self.table.item(sel[0],"values")
         tx={"Date":vals[0],"Type":vals[1],"Category":vals[2],
-            "Amount":vals[3].replace("₹","").replace(",",""),"Notes":vals[4]}
+            "Amount":vals[3].replace(CURRENCY_SYMBOL,"").replace(",",""),"Notes":vals[4]}
         self._edit_tx_direct(tx)
 
     def _edit_tx_direct(self, tx):
@@ -1716,7 +1767,7 @@ class ExpenseTracker:
             cat_box.current(0)
         type_box.bind("<<ComboboxSelected>>",on_type_change)
 
-        lbl("Amount (₹)"); amt_e=ent(tx["Amount"])
+        lbl(f"Amount ({CURRENCY_SYMBOL})"); amt_e=ent(tx["Amount"])
         lbl("Notes");      notes_e=ent(tx.get("Notes",""))
 
         btn_row=tk.Frame(popup,bg=Theme.get("BG")); btn_row.pack(pady=16,fill="x",padx=26)
@@ -1787,7 +1838,7 @@ class ExpenseTracker:
             cat_box.current(0)
         type_box.bind("<<ComboboxSelected>>",on_type_change)
 
-        lbl("Amount (₹)"); amt_entry=ent(); amt_entry.focus()
+        lbl(f"Amount ({CURRENCY_SYMBOL})"); amt_entry=ent(); amt_entry.focus()
         lbl("Notes (optional)"); notes_entry=ent()
 
         btn_row=tk.Frame(popup,bg=Theme.get("BG")); btn_row.pack(pady=18,fill="x",padx=26)
@@ -1828,10 +1879,12 @@ class ExpenseTracker:
         popup.bind("<Escape>",lambda _: popup.destroy())
 
     def _check_budget_alert(self, category, t_type):
+        if not self.cfg.get("budget_alerts", True): return
         if t_type!="Expense" or category not in self.budgets: return
         limit=self.budgets[category]; spent=self.expenses.get(category,0); pct=spent/limit if limit>0 else 0
+        warn_threshold = self.cfg.get("budget_warn_pct", 80) / 100.0
         if   pct>=1.0: messagebox.showwarning("🚨 Budget Exceeded!",f"You've exceeded your {category} budget!\nSpent: {fmt(spent)} / Limit: {fmt(limit)}")
-        elif pct>=0.8: messagebox.showwarning("⚠️ Budget Warning",f"You're at {pct*100:.0f}% of your {category} budget.\nSpent: {fmt(spent)} / Limit: {fmt(limit)}")
+        elif pct>=warn_threshold: messagebox.showwarning("⚠️ Budget Warning",f"You're at {pct*100:.0f}% of your {category} budget.\nSpent: {fmt(spent)} / Limit: {fmt(limit)}")
 
     # ─── Chart ────────────────────────────────────────────────────────
 
@@ -1979,7 +2032,7 @@ class ExpenseTracker:
             self._recalculate()
             for tx in self.all_transactions:
                 tag="income" if tx["Type"]=="Income" else "expense"
-                self.table.insert("",tk.END,values=(tx["Date"],tx["Type"],tx["Category"],
+                self.table.insert("",tk.END,values=(fmt_date(tx["Date"]),tx["Type"],tx["Category"],
                     fmt(float(tx["Amount"])),tx.get("Notes","")),tags=(tag,))
             self._refresh_dash_table(); return
         with open(self.FILE,"r") as fh:
@@ -1990,7 +2043,7 @@ class ExpenseTracker:
                 else:
                     self.balance-=amt; self.total_expense+=amt
                     self.expenses[cat]=self.expenses.get(cat,0)+amt; tag="expense"
-                self.table.insert("",tk.END,values=(row["Date"],t,cat,
+                self.table.insert("",tk.END,values=(fmt_date(row["Date"]),t,cat,
                     fmt(amt),row.get("Notes","")),tags=(tag,))
         self._refresh_cards()
         self._refresh_dash_table()
